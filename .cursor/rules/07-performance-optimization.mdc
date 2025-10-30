@@ -1,0 +1,124 @@
+---
+description: "3D Scanning - Performance Optimization Patterns"
+globs:
+  - "**/*.py"
+alwaysApply: true
+---
+
+# PERFORMANCE OPTIMIZATION
+
+## Processing Benchmarks:
+```python
+# Expected processing times (3M points typical room)
+BENCHMARK_TIMES = {
+    "load_ply": "5-10 seconds",
+    "outlier_removal": "5-10 seconds",
+    "voxel_downsample": "2-3 seconds",
+    "ransac_plane": "5-15 seconds",
+    "dbscan_cluster": "10-30 seconds",
+    "poisson_mesh": "30-60 seconds",
+    "total_pipeline": "60-120 seconds"
+}
+```
+
+## Optimization Strategies:
+```python
+# 1. Early downsampling for large point clouds
+def fast_preprocess(pcd, target_points=1_000_000):
+    if len(pcd.points) > target_points:
+        # Aggressive downsampling for initial processing
+        voxel_size = estimate_voxel_size(pcd, target_points)
+        pcd = pcd.voxel_down_sample(voxel_size)
+
+    return pcd
+
+# 2. Parallel processing with OpenMP
+import os
+os.environ["OMP_NUM_THREADS"] = "8"  # Use 8 CPU cores
+
+# 3. GPU acceleration (if available)
+def use_gpu_if_available(pcd):
+    if o3d.core.cuda.is_available():
+        device = o3d.core.Device("CUDA:0")
+        pcd_gpu = pcd.to(device)
+        return pcd_gpu
+    return pcd
+
+# 4. Memory-efficient streaming for huge scans
+def process_large_scan_streamed(file_path, chunk_size=500_000):
+    # Process point cloud in chunks
+    with open(file_path, 'rb') as f:
+        while True:
+            chunk = load_chunk(f, chunk_size)
+            if chunk is None:
+                break
+            process_chunk(chunk)
+```
+
+## Memory Management:
+```python
+def optimize_memory(pcd):
+    """Reduce memory footprint."""
+
+    # Remove unnecessary attributes
+    if not hasattr(pcd, 'colors') or len(pcd.colors) == 0:
+        pcd.colors = o3d.utility.Vector3dVector()
+
+    # Use float32 instead of float64
+    points = np.array(pcd.points, dtype=np.float32)
+    pcd.points = o3d.utility.Vector3dVector(points)
+
+    return pcd
+```
+
+## Caching Strategy:
+```python
+import hashlib
+import pickle
+
+def cache_processed_scan(pcd, file_path):
+    """Cache processed point cloud for faster re-loading."""
+
+    # Generate cache key
+    file_hash = hashlib.md5(open(file_path, 'rb').read()).hexdigest()
+    cache_path = f"cache/{file_hash}.pkl"
+
+    # Save processed result
+    with open(cache_path, 'wb') as f:
+        pickle.dump(pcd, f)
+
+    return cache_path
+
+def load_cached_scan(file_path):
+    """Load from cache if available."""
+    file_hash = hashlib.md5(open(file_path, 'rb').read()).hexdigest()
+    cache_path = f"cache/{file_hash}.pkl"
+
+    if os.path.exists(cache_path):
+        with open(cache_path, 'rb') as f:
+            return pickle.load(f)
+
+    return None
+```
+
+## Database Optimization:
+```sql
+-- Spatial indexing for fast queries
+CREATE INDEX CONCURRENTLY room_scans_spatial_idx 
+ON room_scans USING GIST(PC_EnvelopeGeometry(point_cloud));
+
+-- Partial indexes for common queries
+CREATE INDEX objects_by_room_idx 
+ON detected_objects(room_id) 
+WHERE confidence > 0.7;
+
+-- Materialized view for analytics
+CREATE MATERIALIZED VIEW room_statistics AS
+SELECT 
+    room_id,
+    COUNT(*) as object_count,
+    AVG(confidence) as avg_confidence,
+    SUM(volume) as total_furniture_volume
+FROM detected_objects
+GROUP BY room_id;
+```

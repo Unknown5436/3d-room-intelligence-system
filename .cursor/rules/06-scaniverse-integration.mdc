@@ -1,0 +1,146 @@
+---
+description: "3D Scanning - Scaniverse App Integration Patterns"
+globs:
+  - "**/*.py"
+  - "**/*.md"
+alwaysApply: true
+---
+
+# SCANIVERSE INTEGRATION PATTERNS
+
+## Optimal Scanning Workflow:
+```yaml
+PREPARATION:
+  - Clear room of movable obstacles
+  - Ensure good lighting (avoid bright sunlight)
+  - Hold iPhone 17 Pro Max vertically
+  - Start Scaniverse app
+
+SCANNING_TECHNIQUE:
+  Mode: "Large Area"
+  Distance: 0.5m-2m from surfaces
+  Speed: Steady, not rushed (~1 min per wall)
+  Overlap: 60-80% between views
+  Pattern: Complete circuit of room
+
+QUALITY_CHECKS:
+  - Verify mesh completeness in app
+  - Check for gaps or artifacts
+  - Confirm adequate point density
+  - Validate coordinate orientation
+
+EXPORT_STRATEGY:
+  - Primary: PLY format (250MB) for processing
+  - Compressed: SPZ format (25MB) for storage
+  - Visualization: GLB format for web
+  - iOS AR: USDZ format for preview
+```
+
+## File Format Handling:
+```python
+def load_scaniverse_export(file_path):
+    """Load Scaniverse PLY/SPZ export.
+
+    Scaniverse exports include:
+    - Vertex positions (x, y, z)
+    - Vertex colors (r, g, b)
+    - Vertex normals (nx, ny, nz)
+    - Faces (for mesh exports)
+    """
+
+    if file_path.endswith('.ply'):
+        pcd = o3d.io.read_point_cloud(file_path)
+    elif file_path.endswith('.spz'):
+        # SPZ is Gaussian Splat format - requires special handling
+        pcd = load_gaussian_splat(file_path)
+    else:
+        raise ValueError("Unsupported format")
+
+    # Validate scan quality
+    if len(pcd.points) < 100000:
+        print("Warning: Low point count - scan may be incomplete")
+
+    return pcd
+```
+
+## Coordinate System:
+```python
+# Scaniverse coordinate system
+Scaniverse_Coords:
+  X: Right (when facing scan start direction)
+  Y: Up (gravity-aligned)
+  Z: Forward (scan start direction)
+
+# Transform if needed
+def transform_to_standard_coords(pcd):
+    # Rotate to match your coordinate system
+    R = pcd.get_rotation_matrix_from_xyz((0, 0, 0))
+    pcd.rotate(R, center=(0, 0, 0))
+    return pcd
+```
+
+## Quality Metrics:
+```python
+def assess_scan_quality(pcd):
+    """Assess Scaniverse scan quality."""
+
+    point_count = len(pcd.points)
+    bbox = pcd.get_axis_aligned_bounding_box()
+    volume = bbox.volume()
+
+    point_density = point_count / volume if volume > 0 else 0
+
+    quality_score = 0.0
+
+    # Point count scoring
+    if point_count > 1_000_000:
+        quality_score += 0.4
+    elif point_count > 500_000:
+        quality_score += 0.3
+    elif point_count > 100_000:
+        quality_score += 0.2
+
+    # Density scoring
+    if point_density > 50000:
+        quality_score += 0.3
+    elif point_density > 20000:
+        quality_score += 0.2
+
+    # Completeness check
+    if has_normals(pcd):
+        quality_score += 0.15
+    if has_colors(pcd):
+        quality_score += 0.15
+
+    return {
+        "quality_score": quality_score,
+        "point_count": point_count,
+        "point_density": point_density,
+        "rating": "excellent" if quality_score > 0.8 else 
+                 "good" if quality_score > 0.6 else
+                 "acceptable" if quality_score > 0.4 else "poor"
+    }
+```
+
+## Common Issues & Solutions:
+```yaml
+ISSUE_1_Drift:
+  Problem: Large rooms show positional drift
+  Solution: Place visual reference targets every 3-4 meters
+  Prevention: Systematic scanning pattern, slower movement
+
+ISSUE_2_Missing_Surfaces:
+  Problem: Glass, mirrors, dark surfaces missing
+  Solution: Add temporary markers (sticky notes)
+  Prevention: Adjust scanning angle, use diffuse lighting
+
+ISSUE_3_Bright_Sunlight:
+  Problem: LIDAR accuracy degrades in bright light
+  Solution: Scan during optimal lighting (overcast or indoor)
+  Prevention: Close blinds, use consistent lighting
+
+ISSUE_4_Low_Detail:
+  Problem: Small objects poorly captured
+  Solution: Reduce scanning distance to 0.5m
+  Prevention: Use "Object" mode for small items
+```

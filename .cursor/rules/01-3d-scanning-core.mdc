@@ -1,0 +1,54 @@
+---
+description: "3D Scanning & Spatial Intelligence - Core Knowledge"
+globs:
+  - "**/*.py"
+  - "**/*.md"
+alwaysApply: true
+---
+
+# 3D SCANNING & SPATIAL INTELLIGENCE - CORE FRAMEWORK
+
+## Project Context:
+iPhone 17 Pro Max + Scaniverse + Spatial Intelligence System for room scanning, object detection, and AI-powered spatial analysis.
+
+## Hardware Specifications:
+```yaml
+iPhone_17_Pro_Max_LIDAR:
+  Technology: dToF (Sony DepthSense)
+  Range: 0.2m-5.0m (optimal: 0.5m-4.0m indoor)
+  Accuracy: 1-2cm typical, <1cm optimal
+  Scan_Rate: 240Hz depth frames
+  Point_Density: ~150,000 points/frame
+```
+
+## File Format Priorities:
+| Format | Use Case | Size | AI Integration |
+|--------|----------|------|----------------|
+| **PLY** | General 3D processing | 250MB | ⭐⭐⭐ (Primary) |
+| **SPZ** | Gaussian Splat | 25MB | ⭐⭐⭐⭐⭐ (Compressed) |
+| **GLB** | Web/AR | Medium | ⭐⭐⭐⭐ (Visualization) |
+| **USDZ** | iOS AR | Medium | ⭐⭐⭐⭐ (Native iOS) |
+
+**DEFAULT**: Use PLY for processing, SPZ for storage/visualization
+
+## Technology Stack (MANDATORY):
+```python
+# Primary Libraries
+import open3d as o3d      # Point cloud processing
+import numpy as np         # Numerical operations
+from scipy.spatial import KDTree  # Spatial indexing
+import fastapi            # REST API
+```
+
+## Core Workflows:
+1. **Capture**: iPhone 17 Pro Max + Scaniverse (2-5 min scan)
+2. **Export**: PLY (250MB) or SPZ (25MB) format
+3. **Process**: Open3D pipeline (outlier removal, segmentation)
+4. **Analyze**: RANSAC planes, DBSCAN clustering, ML classification
+5. **Store**: PostgreSQL + PostGIS with spatial indexing
+6. **API**: FastAPI REST endpoints for AI integration
+
+## Key Accuracy Specifications:
+- Room Dimensions: ±2-5cm
+- Object Detection: 70-85% geometric, 85-95% ML
+- Point Cloud Registration: 0.0-0.1mm excellent, 0.4+mm unacceptable

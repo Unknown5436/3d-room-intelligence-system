@@ -1,0 +1,209 @@
+---
+description: "3D Scanning - FastAPI REST API Patterns"
+globs:
+  - "**/api/**/*.py"
+  - "**/*api*.py"
+  - "**/main.py"
+alwaysApply: true
+---
+
+# FASTAPI SPATIAL INTELLIGENCE API
+
+## API Architecture:
+```python
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from pydantic import BaseModel
+from typing import List, Optional
+import open3d as o3d
+
+app = FastAPI(
+    title="3D Room Intelligence API",
+    description="iPhone 17 Pro Max + Scaniverse Integration",
+    version="1.0.0"
+)
+```
+
+## Pydantic Models:
+```python
+class RoomDimensions(BaseModel):
+    length: float
+    width: float
+    height: float
+    accuracy: str
+    confidence: float
+
+class SpatialObject(BaseModel):
+    type: str
+    position: List[float]
+    dimensions: List[float]
+    volume: float
+    confidence: float
+
+class RoomData(BaseModel):
+    room_id: str
+    dimensions: RoomDimensions
+    objects: List[SpatialObject]
+    point_count: int
+    processed_points: int
+
+class ItemFitCheck(BaseModel):
+    item_type: str
+    dimensions: List[float]  # [length, width, height]
+    preferred_position: Optional[List[float]] = None
+
+class FitResult(BaseModel):
+    fits: bool
+    available_positions: List[List[float]]
+    constraints: List[str]
+    recommendations: List[str]
+```
+
+## Core Endpoints:
+```python
+@app.post("/upload-scan")
+async def upload_scan(file: UploadFile = File(...)):
+    """Upload PLY/SPZ from Scaniverse and process.
+
+    Supported formats: PLY, SPZ
+    Processing time: 60-120 seconds
+    Returns: room_id for subsequent queries
+    """
+
+    if not file.filename.lower().endswith(('.ply', '.spz')):
+        raise HTTPException(400, "Only PLY and SPZ formats supported")
+
+    # Save and process
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.ply') as tmp:
+        content = await file.read()
+        tmp.write(content)
+        temp_path = tmp.name
+
+    try:
+        room_data = process_room_scan(temp_path)
+        room_id = f"room_{len(room_storage) + 1:03d}"
+        room_storage[room_id] = room_data
+
+        return {
+            "status": "success",
+            "room_id": room_id,
+            "objects_detected": len(room_data['objects'])
+        }
+    finally:
+        os.unlink(temp_path)
+
+@app.get("/room/{room_id}/dimensions", response_model=RoomDimensions)
+async def get_room_dimensions(room_id: str):
+    """Get room dimensions (±2-5cm accuracy)."""
+    if room_id not in room_storage:
+        raise HTTPException(404, "Room not found")
+
+    return RoomDimensions(**room_storage[room_id]["dimensions"])
+
+@app.get("/room/{room_id}/objects", response_model=List[SpatialObject])
+async def get_room_objects(room_id: str):
+    """Get detected furniture objects."""
+    if room_id not in room_storage:
+        raise HTTPException(404, "Room not found")
+
+    return [SpatialObject(**obj) for obj in room_storage[room_id]["objects"]]
+
+@app.post("/room/{room_id}/check-fit", response_model=FitResult)
+async def check_item_fit(room_id: str, item: ItemFitCheck):
+    """Check if new furniture item fits in room.
+
+    Considers:
+    - Room dimensions
+    - Existing furniture
+    - Clearance requirements
+    - Accessibility
+    """
+    if room_id not in room_storage:
+        raise HTTPException(404, "Room not found")
+
+    room_data = room_storage[room_id]
+    room_dims = room_data["dimensions"]
+
+    # Check basic fit
+    fits = (
+        item.dimensions[0] < room_dims["length"] and
+        item.dimensions[1] < room_dims["width"] and
+        item.dimensions[2] < room_dims["height"]
+    )
+
+    available_positions = []
+    if fits:
+        # Calculate available positions (simplified)
+        available_positions = find_available_positions(
+            room_data, item.dimensions
+        )
+
+    constraints = []
+    if not fits:
+        constraints.append("Item too large for room")
+
+    recommendations = []
+    if fits:
+        recommendations.append("Place near walls for stability")
+        recommendations.append("Ensure 60cm clearance for walkways")
+
+    return FitResult(
+        fits=fits,
+        available_positions=available_positions,
+        constraints=constraints,
+        recommendations=recommendations
+    )
+
+@app.get("/room/{room_id}/optimize")
+async def optimize_layout(room_id: str):
+    """Get AI-powered layout optimization suggestions."""
+    if room_id not in room_storage:
+        raise HTTPException(404, "Room not found")
+
+    room_data = room_storage[room_id]
+    objects = room_data["objects"]
+
+    suggestions = []
+
+    # Calculate furniture density
+    total_volume = sum(obj["volume"] for obj in objects)
+    room_volume = (
+        room_data["dimensions"]["length"] *
+        room_data["dimensions"]["width"] *
+        room_data["dimensions"]["height"]
+    )
+
+    density_ratio = total_volume / room_volume
+
+    if density_ratio > 0.3:
+        suggestions.append("Room is crowded - consider removing items")
+    elif density_ratio < 0.1:
+        suggestions.append("Room has space for additional furniture")
+
+    suggestions.append("Create clear pathways between furniture")
+    suggestions.append("Group related items for better workflow")
+
+    return {
+        "room_id": room_id,
+        "optimization_suggestions": suggestions,
+        "density_ratio": density_ratio,
+        "layout_score": 0.75
+    }
+```
+
+## Error Handling:
+```python
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal server error",
+            "message": str(exc)
+        }
+    )
+```
+
+## Running the API:
+```bash
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```

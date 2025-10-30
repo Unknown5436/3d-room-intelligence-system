@@ -1,0 +1,27 @@
+# Core Framework
+fastapi==0.104.0
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# Data Validation
+pydantic==2.4.2
+pydantic-settings==2.0.3
+
+# Point Cloud Processing
+open3d==0.19.0
+numpy==1.24.3
+scipy==1.11.3
+
+# Database
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.23
+geoalchemy2==0.14.2
+
+# Utilities
+python-dotenv==1.0.0
+aiofiles==23.2.1
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx==0.25.1

@@ -1,0 +1,128 @@
+---
+description: "3D Scanning - Testing & Validation Patterns"
+globs:
+  - "tests/**/*.py"
+  - "**/*test*.py"
+alwaysApply: true
+---
+
+# TESTING & VALIDATION
+
+## Unit Tests:
+```python
+import pytest
+import open3d as o3d
+import numpy as np
+
+def test_point_cloud_loading():
+    """Test PLY file loading."""
+    pcd = o3d.io.read_point_cloud("test_room.ply")
+    assert len(pcd.points) > 0
+    assert pcd.has_points()
+
+def test_outlier_removal():
+    """Test statistical outlier removal."""
+    pcd = create_test_point_cloud_with_outliers()
+
+    pcd_clean, ind = pcd.remove_statistical_outliers(
+        nb_neighbors=20, std_ratio=2.0
+    )
+
+    assert len(pcd_clean.points) < len(pcd.points)
+    assert len(pcd_clean.points) > len(pcd.points) * 0.8  # Keep most points
+
+def test_plane_detection():
+    """Test RANSAC plane detection."""
+    pcd = create_test_room_with_floor()
+
+    plane_model, inliers = pcd.segment_plane(
+        distance_threshold=0.02,
+        ransac_n=3,
+        num_iterations=1000
+    )
+
+    assert len(inliers) > 1000  # Floor should have many points
+    assert abs(plane_model[2]) > 0.9  # Normal should point up
+
+def test_room_dimensions():
+    """Test dimension calculation accuracy."""
+    pcd = load_test_room()
+    dims = calculate_room_dimensions(pcd)
+
+    # Test against known dimensions (±5cm tolerance)
+    assert abs(dims["length"] - 4.0) < 0.05
+    assert abs(dims["width"] - 3.0) < 0.05
+    assert abs(dims["height"] - 2.5) < 0.05
+```
+
+## Integration Tests:
+```python
+@pytest.mark.integration
+async def test_api_upload_scan(test_client):
+    """Test scan upload endpoint."""
+    with open("test_room.ply", "rb") as f:
+        response = await test_client.post(
+            "/upload-scan",
+            files={"file": ("test_room.ply", f, "application/octet-stream")}
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "room_id" in data
+    assert data["status"] == "success"
+
+@pytest.mark.integration
+async def test_api_get_dimensions(test_client):
+    """Test dimension retrieval."""
+    response = await test_client.get("/room/room_001/dimensions")
+
+    assert response.status_code == 200
+    dims = response.json()
+    assert "length" in dims
+    assert "width" in dims
+    assert "height" in dims
+    assert dims["accuracy"] == "±2-5cm"
+```
+
+## Validation Metrics:
+```python
+def validate_scan_quality(pcd, expected_room_size):
+    """Validate scan meets quality standards."""
+
+    checks = {
+        "point_count": len(pcd.points) > 500_000,
+        "has_colors": pcd.has_colors(),
+        "has_normals": pcd.has_normals(),
+        "bbox_reasonable": validate_bbox_size(pcd, expected_room_size),
+        "no_extreme_outliers": check_no_extreme_outliers(pcd)
+    }
+
+    passed = sum(checks.values())
+    total = len(checks)
+
+    return {
+        "checks": checks,
+        "score": passed / total,
+        "passed": all(checks.values())
+    }
+```
+
+## Accuracy Benchmarks:
+```yaml
+DIMENSION_ACCURACY:
+  iPhone_LIDAR: ±1-2cm typical, <1cm optimal
+  After_Processing: ±2-5cm (includes algorithm error)
+  Acceptable: <10cm error
+  Excellent: <2cm error
+
+OBJECT_CLASSIFICATION:
+  Geometric_Only: 70-85% accuracy
+  ML_Models: 85-95% accuracy
+  Minimum_Acceptable: 70%
+
+POINT_CLOUD_REGISTRATION:
+  Excellent: 0.0-0.1mm
+  Good: 0.1-0.2mm
+  Acceptable: 0.2-0.4mm
+  Unacceptable: >0.4mm
+```

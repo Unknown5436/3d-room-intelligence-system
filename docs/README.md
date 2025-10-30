@@ -1,0 +1,43 @@
+# Documentation
+
+Complete documentation for the 3D Room Intelligence System.
+
+## Getting Started
+
+- **[QUICK_START.md](QUICK_START.md)** - Get running in minutes
+- **[INSTALLATION.md](INSTALLATION.md)** - Complete installation guide
+
+## Guides
+
+- **[PROJECT.md](PROJECT.md)** - Complete project documentation (architecture, design, algorithms)
+- **[TESTING.md](TESTING.md)** - Testing and validation guide
+
+
+## Quick Reference
+
+### Common Commands
+
+```bash
+# Activate environment
+source venv311/bin/activate
+
+# Process PLY file
+python test_local.py
+
+# Start API
+uvicorn backend.api.main:app --reload
+```
+
+### File Locations
+
+- **Main README**: `../README.md`
+- **Configuration**: `../backend/config/settings.py`
+- **API Code**: `../backend/api/`
+- **Processing**: `../backend/processing/`
+- **Database**: `../backend/database/`
+
+## Need Help?
+
+1. Check **[QUICK_START.md](QUICK_START.md)** for common operations
+2. Review **[INSTALLATION.md](INSTALLATION.md)** for setup issues
+3. See **[TESTING.md](TESTING.md)** for testing procedures

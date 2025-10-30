@@ -1,0 +1,119 @@
+---
+description: "3D Scanning - Point Cloud Processing Patterns"
+globs:
+  - "**/*point_cloud*.py"
+  - "**/*process*.py"
+  - "**/*scan*.py"
+alwaysApply: true
+---
+
+# POINT CLOUD PROCESSING PATTERNS
+
+## Open3D Standard Pipeline:
+```python
+import open3d as o3d
+import numpy as np
+
+def process_point_cloud(ply_file_path):
+    # 1. Load point cloud
+    pcd = o3d.io.read_point_cloud(ply_file_path)
+    print(f"Loaded {len(pcd.points)} points")
+
+    # 2. Statistical Outlier Removal
+    pcd_clean, ind = pcd.remove_statistical_outliers(
+        nb_neighbors=20,  # Standard for room scans
+        std_ratio=2.0     # 2 standard deviations
+    )
+
+    # 3. Voxel Downsampling
+    pcd_down = pcd_clean.voxel_down_sample(voxel_size=0.05)  # 5cm voxels
+
+    # 4. Normal Estimation
+    pcd_down.estimate_normals(
+        search_param=o3d.geometry.KDTreeSearchParamHybrid(
+            radius=0.1, max_nn=30
+        )
+    )
+
+    return pcd_down
+```
+
+## RANSAC Plane Detection:
+```python
+def detect_floor_plane(pcd):
+    # RANSAC parameters for room-scale accuracy
+    plane_model, inliers = pcd.segment_plane(
+        distance_threshold=0.02,  # 2cm tolerance
+        ransac_n=3,               # Minimum points for plane
+        num_iterations=1000       # Formula: log(1-p)/log(1-w^n)
+    )
+
+    floor_pcd = pcd.select_by_index(inliers)
+
+    # Plane equation: ax + by + cz + d = 0
+    a, b, c, d = plane_model
+
+    return plane_model, floor_pcd
+```
+
+## DBSCAN Clustering:
+```python
+def cluster_objects(pcd):
+    # DBSCAN parameters for furniture detection
+    labels = np.array(pcd.cluster_dbscan(
+        eps=0.1,         # 10cm neighborhood radius
+        min_points=50    # Minimum cluster size
+    ))
+
+    max_label = labels.max()
+    print(f"Detected {max_label + 1} object clusters")
+
+    objects = []
+    for i in range(max_label + 1):
+        cluster_indices = np.where(labels == i)[0]
+        if len(cluster_indices) < 50:
+            continue
+
+        cluster_pcd = pcd.select_by_index(cluster_indices)
+        bbox = cluster_pcd.get_axis_aligned_bounding_box()
+
+        objects.append({
+            "cluster_id": i,
+            "point_count": len(cluster_indices),
+            "center": bbox.get_center().tolist(),
+            "dimensions": bbox.get_extent().tolist()
+        })
+
+    return objects, labels
+```
+
+## Poisson Surface Reconstruction:
+```python
+def reconstruct_mesh(pcd):
+    # Watertight mesh generation
+    mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
+        pcd,
+        depth=9,              # Octree resolution = 2^9 = 512
+        width=0,              # Automatic width
+        scale=1.1,            # Cube ratio to bounding box
+        linear_fit=False,
+        samples_per_node=1.5  # Smoothness vs detail
+    )
+
+    # Remove low-density vertices
+    vertices_to_remove = densities < np.quantile(densities, 0.01)
+    mesh.remove_vertices_by_mask(vertices_to_remove)
+
+    return mesh
+```
+
+## Performance Benchmarks:
+```python
+# Processing Times (3M points typical room scan)
+Outlier_Removal: 5-10 seconds
+Voxel_Downsampling: 2-3 seconds
+RANSAC_Plane: 5-15 seconds
+DBSCAN_Clustering: 10-30 seconds
+Poisson_Reconstruction: 30-60 seconds
+Total_Pipeline: 60-120 seconds
+```

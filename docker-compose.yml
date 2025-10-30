@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgis/postgis:15-3.3
+    container_name: room_intelligence_db
+    environment:
+      POSTGRES_USER: room_intel
+      POSTGRES_PASSWORD: secure_password
+      POSTGRES_DB: room_intelligence
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/database/migrations/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U room_intel -d room_intelligence"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - room_intelligence_network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: room_intelligence_api
+    environment:
+      DATABASE_URL: postgresql://room_intel:secure_password@postgres:5432/room_intelligence
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      API_RELOAD: "false"
+      LOG_LEVEL: INFO
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app/backend:ro
+      - ./uploads:/app/uploads
+      - ./temp:/app/temp
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - room_intelligence_network
+    command: uvicorn backend.api.main:app --host 0.0.0.0 --port 8000
+
+volumes:
+  postgres_data:
+
+networks:
+  room_intelligence_network:
+    driver: bridge
+

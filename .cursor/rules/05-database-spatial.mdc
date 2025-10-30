@@ -1,0 +1,133 @@
+---
+description: "3D Scanning - PostgreSQL + PostGIS Integration"
+globs:
+  - "**/*database*.py"
+  - "**/*db*.py"
+  - "**/*.sql"
+alwaysApply: true
+---
+
+# POSTGRESQL + POSTGIS SPATIAL DATABASE
+
+## Setup & Extensions:
+```sql
+-- Enable spatial extensions
+CREATE EXTENSION postgis;
+CREATE EXTENSION pointcloud;
+CREATE EXTENSION postgis_topology;
+
+-- Verify installation
+SELECT PostGIS_Version();
+SELECT PC_Version();
+```
+
+## Schema Design:
+```sql
+-- Room scans table
+CREATE TABLE room_scans (
+    id SERIAL PRIMARY KEY,
+    room_id VARCHAR(50) UNIQUE NOT NULL,
+    scan_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    point_count INTEGER,
+    processed_points INTEGER,
+
+    -- Spatial data
+    bounding_box GEOMETRY(POLYGON, 4326),
+    point_cloud PCPATCH,
+
+    -- Room metadata
+    dimensions JSONB,
+    scan_quality FLOAT,
+
+    -- Indexes
+    CONSTRAINT valid_quality CHECK (scan_quality BETWEEN 0 AND 1)
+);
+
+-- Objects table
+CREATE TABLE detected_objects (
+    id SERIAL PRIMARY KEY,
+    room_id VARCHAR(50) REFERENCES room_scans(room_id),
+    object_type VARCHAR(50),
+
+    -- 3D position and dimensions
+    position GEOMETRY(POINTZ, 4326),
+    dimensions JSONB,  -- {length, width, height}
+    volume FLOAT,
+
+    -- Classification
+    confidence FLOAT,
+    classification_method VARCHAR(20),
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Spatial indexes
+CREATE INDEX room_scans_bbox_idx ON room_scans USING GIST(bounding_box);
+CREATE INDEX room_scans_pc_idx ON room_scans USING GIST(PC_EnvelopeGeometry(point_cloud));
+CREATE INDEX objects_position_idx ON detected_objects USING GIST(position);
+```
+
+## Point Cloud Storage:
+```python
+import psycopg2
+from psycopg2.extras import Json
+
+def store_point_cloud(room_id, pcd, dimensions, objects):
+    conn = psycopg2.connect("dbname=spatial_db user=postgres")
+    cur = conn.cursor()
+
+    # Store room scan
+    cur.execute("""
+        INSERT INTO room_scans (room_id, point_count, dimensions)
+        VALUES (%s, %s, %s)
+        RETURNING id
+    """, (room_id, len(pcd.points), Json(dimensions)))
+
+    scan_id = cur.fetchone()[0]
+
+    # Store detected objects
+    for obj in objects:
+        cur.execute("""
+            INSERT INTO detected_objects 
+            (room_id, object_type, position, dimensions, volume, confidence)
+            VALUES (%s, %s, ST_MakePoint(%s, %s, %s), %s, %s, %s)
+        """, (
+            room_id,
+            obj["type"],
+            obj["position"][0], obj["position"][1], obj["position"][2],
+            Json({"length": obj["dimensions"][0], 
+                  "width": obj["dimensions"][1],
+                  "height": obj["dimensions"][2]}),
+            obj["volume"],
+            obj["confidence"]
+        ))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+```
+
+## Spatial Queries:
+```sql
+-- Find objects within distance
+SELECT 
+    object_type,
+    ST_Distance(position, ST_MakePoint($1, $2, $3)) as distance
+FROM detected_objects
+WHERE room_id = $room_id
+AND ST_DWithin(position, ST_MakePoint($1, $2, $3), $max_distance)
+ORDER BY distance;
+
+-- Find available space in room
+SELECT 
+    room_id,
+    dimensions->>'length' as length,
+    dimensions->>'width' as width,
+    dimensions->>'height' as height,
+    COUNT(*) as object_count
+FROM room_scans rs
+LEFT JOIN detected_objects do ON rs.room_id = do.room_id
+WHERE (dimensions->>'length')::float * (dimensions->>'width')::float > $min_area
+GROUP BY room_id, dimensions
+ORDER BY object_count ASC;
+```
