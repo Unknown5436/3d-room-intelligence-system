@@ -13,9 +13,13 @@ import open3d as o3d
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import NullPool
+from sqlalchemy import text
+
+# Set TEST_MODE to prevent import-time DB connections
+os.environ["TEST_MODE"] = "true"
 
 from backend.api.main import app
-from backend.database.connection import get_db_session, engine, AsyncSessionLocal
+from backend.database.connection import get_db_session
 from backend.config import settings
 
 
@@ -36,19 +40,47 @@ def event_loop() -> Generator:
 
 @pytest.fixture
 def test_db_engine():
-    """Create a test database engine."""
-    test_engine = create_async_engine(
-        TEST_DATABASE_URL,
-        poolclass=NullPool,
-        echo=False,
-    )
-    yield test_engine
-    test_engine.dispose()
+    """Create a test database engine.
+    
+    Will skip tests if database connection fails (database not available).
+    """
+    try:
+        test_engine = create_async_engine(
+            TEST_DATABASE_URL,
+            poolclass=NullPool,
+            echo=False,
+            connect_args={"connect_timeout": 2}  # Fast timeout for tests
+        )
+        yield test_engine
+        # Properly await async dispose
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If loop is running, schedule dispose
+                asyncio.create_task(test_engine.dispose())
+            else:
+                loop.run_until_complete(test_engine.dispose())
+        except RuntimeError:
+            # No event loop, create one
+            asyncio.run(test_engine.dispose())
+    except Exception as e:
+        pytest.skip(f"Database not available: {e}", allow_module_level=False)
 
 
 @pytest.fixture
 async def test_db_session(test_db_engine) -> AsyncGenerator[AsyncSession, None]:
-    """Create a test database session with transaction rollback."""
+    """Create a test database session with transaction rollback.
+    
+    Will skip if database connection fails.
+    """
+    try:
+        # Test connection (SQLAlchemy 2.0 requires text() for raw SQL)
+        async with test_db_engine.begin() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception as e:
+        pytest.skip(f"Database connection failed: {e}", allow_module_level=False)
+    
     async_session_maker = async_sessionmaker(
         test_db_engine,
         class_=AsyncSession,
@@ -57,19 +89,29 @@ async def test_db_session(test_db_engine) -> AsyncGenerator[AsyncSession, None]:
         autoflush=False,
     )
     
+    # Create session and keep it alive for the test
     async with async_session_maker() as session:
-        async with session.begin():
+        # Start a transaction for this test
+        trans = await session.begin()
+        try:
             yield session
-            await session.rollback()
+        finally:
+            # Rollback transaction to keep database clean between tests
+            try:
+                if trans.is_active:
+                    await trans.rollback()
+            except Exception:
+                pass  # Transaction may already be closed
 
 
 @pytest.fixture
 def test_client(test_db_session: AsyncSession) -> TestClient:
     """Create a FastAPI test client with dependency overrides."""
     
-    def override_get_db():
+    async def override_get_db():
         """Override database session dependency for testing."""
-        return test_db_session
+        # Return the session as an async generator to match the original signature
+        yield test_db_session
     
     app.dependency_overrides[get_db_session] = override_get_db
     

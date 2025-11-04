@@ -21,10 +21,11 @@ Complete documentation for the 3D Room Intelligence System.
 # Activate environment
 source venv311/bin/activate
 
-# Process PLY file
-python test_local.py
+# Run tests
+pytest -v
 
-# Start API
+# Start API (requires database)
+docker-compose up -d postgres  # Start database first
 uvicorn backend.api.main:app --reload
 ```
 

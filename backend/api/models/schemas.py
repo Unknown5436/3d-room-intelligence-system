@@ -2,7 +2,7 @@
 
 Reference: Section E1 for API model specifications.
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional
 
 
@@ -16,8 +16,8 @@ class RoomDimensions(BaseModel):
     height: float = Field(..., description="Room height in meters", gt=0)
     accuracy: str = Field(..., description="Accuracy estimate (e.g., '±2-5cm')")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "length": 4.5,
                 "width": 3.2,
@@ -25,6 +25,7 @@ class RoomDimensions(BaseModel):
                 "accuracy": "±2-5cm"
             }
         }
+    )
 
 
 class SpatialObject(BaseModel):
@@ -53,8 +54,8 @@ class SpatialObject(BaseModel):
         le=1
     )
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "type": "table",
                 "position": [2.0, 1.5, 0.75],
@@ -63,6 +64,7 @@ class SpatialObject(BaseModel):
                 "confidence": 0.78
             }
         }
+    )
 
 
 class RoomData(BaseModel):
@@ -73,8 +75,8 @@ class RoomData(BaseModel):
     point_count: int = Field(..., description="Total point count in original scan", ge=0)
     processed_points: int = Field(..., description="Point count after processing", ge=0)
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "room_id": "room_001",
                 "dimensions": {
@@ -88,6 +90,7 @@ class RoomData(BaseModel):
                 "processed_points": 800000
             }
         }
+    )
 
 
 class ItemFitCheck(BaseModel):
@@ -106,14 +109,15 @@ class ItemFitCheck(BaseModel):
         max_length=3
     )
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "item_type": "table",
                 "dimensions": [1.5, 0.9, 0.75],
                 "preferred_position": [2.0, 1.5, 0.0]
             }
         }
+    )
 
 
 class FitResult(BaseModel):
@@ -126,8 +130,8 @@ class FitResult(BaseModel):
     constraints: List[str] = Field(..., description="Constraints preventing placement")
     recommendations: List[str] = Field(..., description="Recommendations for placement")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "fits": True,
                 "available_positions": [[1.0, 1.0, 0.0], [2.0, 1.5, 0.0]],
@@ -138,6 +142,7 @@ class FitResult(BaseModel):
                 ]
             }
         }
+    )
 
 
 class UploadResponse(BaseModel):

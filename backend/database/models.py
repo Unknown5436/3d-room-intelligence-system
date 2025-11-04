@@ -29,7 +29,7 @@ class Room(Base):
     height = Column(Float)
     accuracy = Column(String(50))
     scan_quality = Column(Float)
-    metadata = Column(JSONB, default={})
+    extra_metadata = Column(JSONB, default={})
     
     # Relationships
     point_cloud_patches = relationship("PointCloudPatch", back_populates="room", cascade="all, delete-orphan")
@@ -71,7 +71,7 @@ class DetectedObject(Base):
     volume = Column(Float)  # cubic meters
     confidence = Column(Float)  # 0-1 classification confidence
     classification_method = Column(String(20))  # "geometric" or "ml"
-    metadata = Column(JSONB, default={})
+    extra_metadata = Column(JSONB, default={})
     created_at = Column(TIMESTAMP, server_default=func.now())
     
     # Relationships

@@ -5,34 +5,60 @@ Reference: Section C3 for database architecture.
 """
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import NullPool
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional, Any
 import logging
+import os
 
 from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Convert postgresql:// to postgresql+psycopg:// for async support
-database_url = settings.database_url.replace("postgresql://", "postgresql+psycopg://")
+# Lazy engine creation to avoid import-time DB connections during testing
+_engine: Optional[Any] = None
+_AsyncSessionLocal: Optional[Any] = None
 
-# Create async engine with connection pooling
-# Pool size: 20 connections, max_overflow: 10 (as per plan)
-engine = create_async_engine(
-    database_url,
-    pool_size=settings.database_pool_size,
-    max_overflow=settings.database_max_overflow,
-    echo=False,  # Set to True for SQL query logging
-    future=True,
-)
+def _initialize_engine():
+    """Initialize the database engine (lazy, only when needed)."""
+    global _engine, _AsyncSessionLocal
+    
+    if _engine is None:
+        # Skip engine creation during test imports if TEST_MODE is set
+        if os.getenv("TEST_MODE") == "true":
+            logger.debug("TEST_MODE enabled - skipping engine creation")
+            return None
+        
+        # Convert postgresql:// to postgresql+psycopg:// for async support
+        database_url = settings.database_url.replace("postgresql://", "postgresql+psycopg://")
+        
+        # Create async engine with connection pooling
+        # Pool size: 20 connections, max_overflow: 10 (as per plan)
+        _engine = create_async_engine(
+            database_url,
+            pool_size=settings.database_pool_size,
+            max_overflow=settings.database_max_overflow,
+            echo=False,  # Set to True for SQL query logging
+            future=True,
+        )
+        
+        # Create async session factory
+        _AsyncSessionLocal = async_sessionmaker(
+            _engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+            autocommit=False,
+            autoflush=False,
+        )
+    
+    return _engine
 
-# Create async session factory
-AsyncSessionLocal = async_sessionmaker(
-    engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-    autocommit=False,
-    autoflush=False,
-)
+# Create engine/session on module import (but skip in TEST_MODE)
+# This maintains backward compatibility while allowing tests to override
+if os.getenv("TEST_MODE") != "true":
+    _initialize_engine()
+
+# Export engine and session maker (will be None in TEST_MODE, created lazily)
+engine = _engine
+AsyncSessionLocal = _AsyncSessionLocal
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
@@ -41,7 +67,11 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     Yields:
         AsyncSession: Database session for use in route handlers
     """
-    async with AsyncSessionLocal() as session:
+    # Ensure engine is initialized
+    if _AsyncSessionLocal is None:
+        _initialize_engine()
+    
+    async with _AsyncSessionLocal() as session:
         try:
             yield session
             await session.commit()
@@ -55,7 +85,11 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
 async def init_db() -> None:
     """Initialize database - verify connection."""
     try:
-        async with engine.begin() as conn:
+        # Ensure engine is initialized
+        if _engine is None:
+            _initialize_engine()
+        
+        async with _engine.begin() as conn:
             # Test connection
             await conn.execute("SELECT 1")
         logger.info("Database connection established successfully")
@@ -66,5 +100,6 @@ async def init_db() -> None:
 
 async def close_db() -> None:
     """Close database connections."""
-    await engine.dispose()
+    if _engine is not None:
+        await _engine.dispose()
     logger.info("Database connections closed")

@@ -3,7 +3,9 @@
 
 -- Enable spatial extensions
 CREATE EXTENSION IF NOT EXISTS postgis;
-CREATE EXTENSION IF NOT EXISTS pointcloud;
+-- Note: pointcloud extension is optional and may not be available in all PostGIS images
+-- If needed, use a custom Docker image with pointcloud support
+-- CREATE EXTENSION IF NOT EXISTS pointcloud;
 CREATE EXTENSION IF NOT EXISTS postgis_topology;
 
 -- Verify installation (can be run manually)
@@ -24,24 +26,24 @@ CREATE TABLE IF NOT EXISTS rooms (
     height FLOAT,
     accuracy VARCHAR(50),
     scan_quality FLOAT CHECK (scan_quality BETWEEN 0 AND 1),
-    metadata JSONB DEFAULT '{}'::jsonb
+    extra_metadata JSONB DEFAULT '{}'::jsonb
 );
 
 -- Table: point_cloud_patches (Point cloud storage)
--- Uses PostGIS Pointcloud extension for efficient storage
+-- Note: PCPATCH type requires pointcloud extension (optional)
+-- For now, using TEXT to store point cloud data as JSON or base64
 CREATE TABLE IF NOT EXISTS point_cloud_patches (
     id SERIAL PRIMARY KEY,
     room_id INTEGER REFERENCES rooms(id) ON DELETE CASCADE,
-    patch PCPATCH(1),
+    patch TEXT,  -- Changed from PCPATCH(1) to TEXT for compatibility
     envelope GEOMETRY(POLYGON, 4326),
     patch_index INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Create spatial index on point cloud patches (Section C3)
-CREATE INDEX IF NOT EXISTS room_patches_gist_idx 
-ON point_cloud_patches USING GIST(PC_EnvelopeGeometry(patch));
-
+-- Note: PC_EnvelopeGeometry requires pointcloud extension
+-- Using envelope geometry index instead
 CREATE INDEX IF NOT EXISTS room_patches_envelope_idx 
 ON point_cloud_patches USING GIST(envelope);
 
@@ -56,7 +58,7 @@ CREATE TABLE IF NOT EXISTS detected_objects (
     volume FLOAT,
     confidence FLOAT CHECK (confidence BETWEEN 0 AND 1),
     classification_method VARCHAR(20),
-    metadata JSONB DEFAULT '{}'::jsonb,
+    extra_metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

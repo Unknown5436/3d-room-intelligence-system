@@ -59,7 +59,7 @@ class RoomRepository:
             height=height,
             accuracy=accuracy,
             scan_quality=scan_quality,
-            metadata=metadata or {}
+            extra_metadata=metadata or {}
         )
         self.session.add(room)
         await self.session.flush()
@@ -205,7 +205,7 @@ class ObjectRepository:
             volume=volume,
             confidence=confidence,
             classification_method=classification_method,
-            metadata=metadata or {}
+            extra_metadata=metadata or {}
         )
         
         self.session.add(obj)

@@ -18,13 +18,14 @@ A production-ready system for processing 3D room scans from iPhone 17 Pro Max + 
 source venv311/bin/activate
 ```
 
-### 2. Process a PLY File
+### 2. Start API Server (requires database)
 
+First, ensure PostgreSQL is running:
 ```bash
-python test_local.py
+docker-compose up -d postgres
 ```
 
-### 3. Start API Server (requires database)
+### 3. Start API
 
 ```bash
 uvicorn backend.api.main:app --reload
@@ -46,8 +47,8 @@ Interactive docs: http://localhost:8000/api/docs
 ├── tests/               # Test suite
 ├── docs/                # Documentation
 ├── requirements.txt     # Python dependencies
-├── Dockerfile.dev       # Docker development setup
-└── init.sql            # Database initialization script
+├── docker-compose.yml   # Docker services configuration
+└── Dockerfile           # Docker container definition
 ```
 
 ## Installation
@@ -76,8 +77,10 @@ All documentation is in the `docs/` folder:
 
 - **[docs/README.md](docs/README.md)** - Documentation index
 - **[docs/QUICK_START.md](docs/QUICK_START.md)** - Quick start guide
-- **[docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md)** - Testing instructions
-- **[docs/INSTALL_STEPS.md](docs/INSTALL_STEPS.md)** - Installation guide
+- **[docs/TESTING.md](docs/TESTING.md)** - Testing instructions
+- **[docs/INSTALLATION.md](docs/INSTALLATION.md)** - Installation guide
+- **[docs/API.md](docs/API.md)** - Complete API reference
+- **[docs/PROJECT.md](docs/PROJECT.md)** - Project architecture and design
 
 ## Technology Stack
 

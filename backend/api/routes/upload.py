@@ -17,6 +17,7 @@ from backend.utils.validators import validate_ply_file, validate_filename
 from backend.processing.process_room import process_room_scan
 from backend.config import settings
 import uuid
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -85,21 +86,39 @@ async def upload_scan(
         # Generate unique room ID
         room_id = f"room_{uuid.uuid4().hex[:8]}"
         
+        # Convert numpy types to native Python types for JSON serialization
+        def convert_numpy_types(obj):
+            """Convert numpy types to native Python types for JSON serialization."""
+            if isinstance(obj, np.integer):
+                return int(obj)
+            elif isinstance(obj, np.floating):
+                return float(obj)
+            elif isinstance(obj, np.ndarray):
+                return obj.tolist()
+            elif isinstance(obj, dict):
+                return {k: convert_numpy_types(v) for k, v in obj.items()}
+            elif isinstance(obj, (list, tuple)):
+                return [convert_numpy_types(item) for item in obj]
+            return obj
+        
+        # Prepare metadata with converted types
+        metadata = {
+            "processing_time": convert_numpy_types(room_data["processing_time"]),
+            "cluster_stats": convert_numpy_types(room_data.get("cluster_stats", {}))
+        }
+        
         # Store in database
         room_repo = RoomRepository(session)
         room = await room_repo.create_room(
             room_id=room_id,
-            point_count=room_data["point_count"],
-            processed_points=room_data["processed_points"],
-            length=room_data["dimensions"]["length"],
-            width=room_data["dimensions"]["width"],
-            height=room_data["dimensions"]["height"],
+            point_count=int(room_data["point_count"]),
+            processed_points=int(room_data["processed_points"]),
+            length=float(room_data["dimensions"]["length"]),
+            width=float(room_data["dimensions"]["width"]),
+            height=float(room_data["dimensions"]["height"]),
             accuracy=room_data["dimensions"]["accuracy"],
-            scan_quality=room_data["scan_quality"],
-            metadata={
-                "processing_time": room_data["processing_time"],
-                "cluster_stats": room_data.get("cluster_stats", {})
-            }
+            scan_quality=float(room_data["scan_quality"]),
+            metadata=metadata
         )
         
         # Store detected objects
@@ -108,14 +127,14 @@ async def upload_scan(
             await obj_repo.create_object(
                 room_id=room_id,
                 object_type=obj["type"],
-                position=obj["position"],
+                position=[float(x) for x in obj["position"]],  # Ensure floats
                 dimensions={
-                    "length": obj["dimensions"][0],
-                    "width": obj["dimensions"][1],
-                    "height": obj["dimensions"][2]
+                    "length": float(obj["dimensions"][0]),
+                    "width": float(obj["dimensions"][1]),
+                    "height": float(obj["dimensions"][2])
                 },
-                volume=obj["volume"],
-                confidence=obj["confidence"],
+                volume=float(obj["volume"]),
+                confidence=float(obj["confidence"]),
                 classification_method="geometric"
             )
         

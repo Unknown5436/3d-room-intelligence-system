@@ -183,12 +183,15 @@ def extract_room_dimensions(
     logger.info("Extracting room dimensions...")
     
     if not plane_models:
-        logger.warning("No planes detected - cannot extract dimensions")
+        logger.warning("No planes detected - using bounding box fallback")
+        # Fallback to bounding box dimensions
+        bbox = pcd.get_axis_aligned_bounding_box()
+        extent = bbox.get_extent()
         return {
-            "length": 0.0,
-            "width": 0.0,
-            "height": 0.0,
-            "accuracy": "unknown"
+            "length": float(extent[0]),
+            "width": float(extent[1]),
+            "height": float(extent[2]),
+            "accuracy": "±10-20cm (bounding box estimate)"
         }
     
     # Identify floor and ceiling

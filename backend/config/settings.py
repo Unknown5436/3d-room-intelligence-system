@@ -2,7 +2,7 @@
 
 Reference: Section C of 3dscanknowledge.md for algorithm parameters.
 """
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 
 
@@ -37,9 +37,10 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_file: str = "logs/api.log"
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False
+    )
 
 
 # Global settings instance

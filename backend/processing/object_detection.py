@@ -69,7 +69,8 @@ def classify_by_geometry(
     - Tables: 0.6-0.8m height, aspect_ratio > 0.5
     - Chairs: 0.4-0.5m height, volume < 0.3m³
     - Desks: 0.7-0.8m height, aspect_ratio > 1.2
-    - Beds: 0.4-0.6m height, volume > 2.0m³
+    - Beds: 0.3-0.6m height, volume > 0.8m³, length > 1.5m or surface area > 1.5m²
+    - Nightstands: 0.45-0.7m height, volume 0.05-0.5m³, compact footprint
     - Sofas: 0.7-0.9m height, length > 1.5m
     - Cabinets: height > 1.2m, volume > 0.5m³
     
@@ -87,6 +88,25 @@ def classify_by_geometry(
     length = dims.get("length", 0)
     width = dims.get("width", 0)
     
+    # Bed detection: 0.3-0.6m height, large volume (>0.8m³ for smaller beds)
+    # Large horizontal surface (typically 2m x 1.5m x 0.5m = 1.5m³)
+    # Check bed FIRST to avoid misclassification as table
+    # Lowered threshold to 0.8m³ to catch twin beds and platform beds
+    if 0.3 <= height <= 0.6 and volume > 0.8:
+        # Beds are typically longer than wide (length > width)
+        # Also check if it's a large surface area (length * width > 1.5m²)
+        surface_area = length * width
+        if length > 1.5 or surface_area > 1.5:  # Typical bed length is 2m, or large surface
+            return "bed", 0.80
+    
+    # Nightstand detection: 0.45-0.7m height, compact size (0.05-0.5m³)
+    # Smaller than tables but similar height, typically 0.3-0.5m width/depth
+    # Check BEFORE table to avoid misclassification
+    if 0.45 <= height <= 0.7 and 0.05 <= volume <= 0.5:
+        # Check for compact footprint (not too elongated)
+        if width < 0.6 and length < 0.6:
+            return "nightstand", 0.75
+    
     # Table detection: 0.6-0.8m height, aspect_ratio > 0.5
     if 0.6 <= height <= 0.8 and aspect_ratio > 0.5:
         return "table", 0.75
@@ -98,10 +118,6 @@ def classify_by_geometry(
     # Desk detection: 0.7-0.8m height, aspect_ratio > 1.2
     if 0.7 <= height <= 0.8 and aspect_ratio > 1.2:
         return "desk", 0.72
-    
-    # Bed detection: 0.4-0.6m height, volume > 2.0m³
-    if 0.4 <= height <= 0.6 and volume > 2.0:
-        return "bed", 0.80
     
     # Sofa detection: 0.7-0.9m height, length > 1.5m
     if 0.7 <= height <= 0.9 and length > 1.5:
@@ -122,7 +138,7 @@ def classify_by_geometry(
 def classify_objects(
     pcd: o3d.geometry.PointCloud,
     labels: np.ndarray,
-    min_cluster_size: int = 50
+    min_cluster_size: int = None
 ) -> List[Dict[str, Any]]:
     """Classify objects from DBSCAN cluster labels.
     
@@ -145,11 +161,21 @@ def classify_objects(
         logger.warning("No clusters found for classification")
         return objects
     
+    # Adaptive min_cluster_size: if not provided, use 10% of average cluster size or 15, whichever is smaller
+    if min_cluster_size is None:
+        cluster_sizes = [np.sum(labels == i) for i in range(max_label + 1)]
+        if cluster_sizes:
+            avg_size = np.mean(cluster_sizes)
+            min_cluster_size = max(10, min(30, int(avg_size * 0.1)))
+        else:
+            min_cluster_size = 15
+    
     for i in range(max_label + 1):
         cluster_indices = np.where(labels == i)[0]
         
         # Skip small clusters
         if len(cluster_indices) < min_cluster_size:
+            logger.debug(f"Skipping cluster {i}: too small ({len(cluster_indices)} < {min_cluster_size})")
             continue
         
         # Extract cluster point cloud

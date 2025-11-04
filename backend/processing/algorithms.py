@@ -79,11 +79,16 @@ def detect_planes(
 def cluster_objects(
     pcd: o3d.geometry.PointCloud
 ) -> Tuple[np.ndarray, int, Dict[str, Any]]:
-    """Cluster objects using DBSCAN algorithm.
+    """Cluster objects using DBSCAN algorithm with adaptive parameters.
     
-    Reference: Section B1 - DBSCAN clustering with parameters:
-    - eps: 0.1 (10cm neighborhood radius - room scale)
-    - min_samples: 50 (minimum cluster size)
+    Reference: Section B1 - DBSCAN clustering with adaptive parameters:
+    - Base eps: 0.1 (10cm neighborhood radius - room scale)
+    - Base min_samples: 50 (minimum cluster size)
+    - Parameters adapt based on point cloud density and size
+    
+    Tuning strategy:
+    - eps scales with voxel size (typically 2-3x voxel size)
+    - min_points adapts to point cloud size (10-30% of points for small clouds)
     
     Complexity: O(n log n) with spatial indexing.
     
@@ -98,28 +103,67 @@ def cluster_objects(
     """
     logger.info(f"Clustering objects using DBSCAN...")
     
-    if len(pcd.points) < settings.dbscan_min_samples:
-        logger.warning("Not enough points for DBSCAN clustering")
+    point_count = len(pcd.points)
+    
+    # Minimum threshold: need at least 10 points for clustering
+    if point_count < 10:
+        logger.warning(f"Not enough points for DBSCAN clustering: {point_count}")
         return np.array([]), -1, {}
     
-    # Section B1: DBSCAN parameters
+    # Adaptive parameter calculation
+    # eps: 2-3x voxel size, but not less than 0.05m or more than 0.15m
+    base_eps = settings.dbscan_eps  # 0.1m default
+    voxel_ratio = 2.5  # eps should be ~2.5x voxel size for good connectivity
+    adaptive_eps = max(0.05, min(0.15, settings.voxel_size * voxel_ratio))
+    # Use the larger of base_eps and adaptive_eps for better detection
+    eps = max(base_eps, adaptive_eps)
+    
+    # min_points: adapt based on point cloud size
+    # For small clouds (< 200 points): use 20-30% of points
+    # For medium clouds (200-1000): use 10-20% of points  
+    # For large clouds (> 1000): use base min_samples (50)
+    if point_count < 200:
+        min_points = max(10, int(point_count * 0.25))  # 25% of points, min 10
+    elif point_count < 1000:
+        min_points = max(20, int(point_count * 0.15))  # 15% of points, min 20
+    else:
+        min_points = settings.dbscan_min_samples  # Default 50 for large clouds
+    
+    # Ensure min_points doesn't exceed point_count
+    min_points = min(min_points, max(10, point_count - 5))
+    
+    logger.info(
+        f"DBSCAN parameters: eps={eps:.3f}m, min_points={min_points} "
+        f"(point_count={point_count}, voxel_size={settings.voxel_size}m)"
+    )
+    
+    # Run DBSCAN clustering
     labels = np.array(pcd.cluster_dbscan(
-        eps=settings.dbscan_eps,  # 0.1m = 10cm neighborhood
-        min_points=settings.dbscan_min_samples  # 50 minimum points
+        eps=eps,
+        min_points=min_points
     ))
     
     max_label = labels.max()
-    logger.info(f"DBSCAN clustering complete: {max_label + 1} clusters (noise: {np.sum(labels == -1)} points)")
+    num_clusters = max_label + 1
+    noise_points = int(np.sum(labels == -1))
+    
+    logger.info(
+        f"DBSCAN clustering complete: {num_clusters} clusters "
+        f"(noise: {noise_points} points, {noise_points/point_count*100:.1f}%)"
+    )
     
     # Calculate cluster statistics
     cluster_stats = {
         "total_points": len(labels),
-        "num_clusters": max_label + 1,
-        "noise_points": int(np.sum(labels == -1)),
+        "num_clusters": num_clusters,
+        "noise_points": noise_points,
+        "noise_ratio": noise_points / point_count if point_count > 0 else 0.0,
+        "eps_used": eps,
+        "min_points_used": min_points,
         "cluster_sizes": {}
     }
     
-    for i in range(max_label + 1):
+    for i in range(num_clusters):
         cluster_size = np.sum(labels == i)
         cluster_stats["cluster_sizes"][i] = int(cluster_size)
     
