@@ -126,7 +126,7 @@ pytest --cov=backend --cov-report=html
 - You need Python 3.11. See [INSTALLATION.md](INSTALLATION.md#step-1-install-python-311).
 
 ### "Database connection failed"
-- For local processing: Not needed - use `python test_local.py`
+- For local processing: Use `pytest tests/test_processing.py -v` (no database needed)
 - For API: Ensure PostgreSQL is running and `.env` is configured correctly.
 
 ### Processing takes too long

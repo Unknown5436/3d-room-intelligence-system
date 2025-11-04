@@ -235,7 +235,7 @@ Expected processing times (for ~585K point room scan):
 
 Place your PLY files in the project root for testing:
 - `Room scan v1.ply` (already included)
-- Or use: `python test_local.py --file your_scan.ply`
+- Or use the API: `curl -X POST "http://localhost:8000/api/upload-scan" -F "file=@your_scan.ply"`
 
 ## Migration Notes
 
