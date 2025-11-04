@@ -94,7 +94,7 @@ Test the processing pipeline directly:
 
 ```bash
 source venv311/bin/activate
-python test_local.py
+pytest tests/test_processing.py -v
 ```
 
 This tests:
