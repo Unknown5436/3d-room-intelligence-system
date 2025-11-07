@@ -77,6 +77,7 @@ All documentation is in the `docs/` folder:
 
 - **[docs/README.md](docs/README.md)** - Documentation index
 - **[docs/QUICK_START.md](docs/QUICK_START.md)** - Quick start guide
+- **[docs/QUICK_INTEGRATION.md](docs/QUICK_INTEGRATION.md)** - Use this API in other projects
 - **[docs/TESTING.md](docs/TESTING.md)** - Testing instructions
 - **[docs/INSTALLATION.md](docs/INSTALLATION.md)** - Installation guide
 - **[docs/API.md](docs/API.md)** - Complete API reference

@@ -11,6 +11,8 @@ Complete documentation for the 3D Room Intelligence System.
 
 - **[PROJECT.md](PROJECT.md)** - Complete project documentation (architecture, design, algorithms)
 - **[TESTING.md](TESTING.md)** - Testing and validation guide
+- **[INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md)** - Complete integration guide for other projects
+- **[QUICK_INTEGRATION.md](QUICK_INTEGRATION.md)** - Quick start for using this API in other projects
 
 
 ## Quick Reference
